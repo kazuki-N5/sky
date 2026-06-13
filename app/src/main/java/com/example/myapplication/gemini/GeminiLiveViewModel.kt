@@ -9,6 +9,7 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.BuildConfig
+import com.example.myapplication.journal.JournalRepo
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,6 +128,19 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
 
   override fun onTurnComplete() {
     turnFresh = true
+    val state = _uiState.value
+    val u = state.userText.trim()
+    val a = state.assistantText.trim()
+    if (u.isNotEmpty() || a.isNotEmpty()) {
+      val line = buildString {
+        if (u.isNotEmpty()) append("🗣️ ").append(u)
+        if (a.isNotEmpty()) {
+          if (isNotEmpty()) append("　")
+          append("🤖 ").append(a)
+        }
+      }
+      JournalRepo.addRecord(line)
+    }
   }
 
   override fun onInterrupted() = speaker.flush()

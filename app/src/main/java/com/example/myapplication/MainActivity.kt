@@ -10,7 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.activity.viewModels
-import com.example.myapplication.ui.GlassesApp
+import com.example.myapplication.journal.JournalRepo
+import com.example.myapplication.ui.RootScaffold
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import com.example.myapplication.wearables.WearablesViewModel
 import com.meta.wearable.dat.core.Wearables
@@ -61,11 +62,12 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    JournalRepo.init(this)
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
-        GlassesApp(
-            viewModel = viewModel,
+        RootScaffold(
+            wearablesViewModel = viewModel,
             onRequestWearablesPermission = ::requestWearablesPermission,
         )
       }

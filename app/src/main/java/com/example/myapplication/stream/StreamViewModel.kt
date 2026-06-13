@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.R
+import com.example.myapplication.journal.JournalRepo
 import com.example.myapplication.wearables.WearablesViewModel
 import com.meta.wearable.dat.camera.Stream
 import com.meta.wearable.dat.camera.addStream
@@ -328,6 +329,7 @@ class StreamViewModel(
           }
         }
     _uiState.update { it.copy(capturedPhoto = capturedPhoto, isShareDialogVisible = true) }
+    JournalRepo.addRecord("📷 写真を撮影しました")
   }
 
   // HEIC Decoding with EXIF transformation
