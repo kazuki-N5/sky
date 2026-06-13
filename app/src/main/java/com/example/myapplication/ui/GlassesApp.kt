@@ -246,6 +246,8 @@ private fun StreamScreen(wearablesViewModel: WearablesViewModel, modifier: Modif
         Text("Capture")
       }
     }
+
+    GeminiOverlay(streamViewModel = streamViewModel)
   }
 
   val photo = streamUiState.capturedPhoto
