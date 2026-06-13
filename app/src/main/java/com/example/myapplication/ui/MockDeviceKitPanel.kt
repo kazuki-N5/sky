@@ -4,6 +4,8 @@
 package com.example.myapplication.ui
 
 import android.Manifest
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,11 +48,22 @@ import com.example.myapplication.mockdevicekit.MockDeviceInfo
 import com.example.myapplication.mockdevicekit.MockDeviceKitViewModel
 import com.meta.wearable.dat.mockdevice.api.camera.CameraFacing
 
+// ModalBottomSheet content runs under a ContextThemeWrapper, so LocalContext is not directly the
+// Activity — walk the base-context chain to find the hosting ComponentActivity.
+private fun Context.findComponentActivity(): ComponentActivity {
+  var ctx: Context = this
+  while (ctx is ContextWrapper) {
+    if (ctx is ComponentActivity) return ctx
+    ctx = ctx.baseContext
+  }
+  error("No ComponentActivity found in context chain")
+}
+
 @Composable
 fun MockDeviceKitPanel(
     modifier: Modifier = Modifier,
     viewModel: MockDeviceKitViewModel =
-        viewModel(viewModelStoreOwner = LocalContext.current as ComponentActivity),
+        viewModel(viewModelStoreOwner = LocalContext.current.findComponentActivity()),
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
