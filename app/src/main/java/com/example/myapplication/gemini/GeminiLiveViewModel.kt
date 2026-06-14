@@ -168,23 +168,8 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
     val current = _uiState.value.tutor
     if (changed) {
       lastClassifiedScene = null
-      if (current.phase == TutorPhase.CLASSIFYING) {
-        classificationJob?.cancel()
-        classificationJob = null
-      }
-      if (current.phase == TutorPhase.ANALYZING) {
-        analysisJob?.cancel()
-        analysisJob = null
-      }
-      if (
-          current.phase in
-              setOf(
-                  TutorPhase.OFFERING,
-                  TutorPhase.ANALYZING,
-                  TutorPhase.HINT_VISIBLE,
-              )
-      ) {
-        tutorAnalysis = null
+      if (current.phase == TutorPhase.CLASSIFYING) classificationJob?.cancel()
+      if (current.phase == TutorPhase.OFFERING) {
         relay?.clearTutor()
         _uiState.update { it.copy(tutor = TutorUiState(phase = TutorPhase.WATCHING)) }
       }
