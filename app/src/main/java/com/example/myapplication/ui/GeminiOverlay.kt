@@ -26,6 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +43,7 @@ import com.example.myapplication.gemini.GeminiLiveViewModel
 import com.example.myapplication.gemini.GeminiStatus
 import com.example.myapplication.stream.StreamViewModel
 import com.example.myapplication.tutor.TutorPhase
+import com.meta.wearable.dat.camera.types.StreamState
 import kotlinx.coroutines.delay
 
 @Composable
@@ -48,11 +52,19 @@ fun BoxScope.GeminiOverlay(
     geminiViewModel: GeminiLiveViewModel = viewModel(),
 ) {
   val ui by geminiViewModel.uiState.collectAsStateWithLifecycle()
+  val streamUi by streamViewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val isOn = ui.status == GeminiStatus.LIVE || ui.status == GeminiStatus.CONNECTING
+  var micPermissionGranted by remember {
+    mutableStateOf(
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED)
+  }
+  var micPermissionRequested by remember { mutableStateOf(false) }
 
   val micPermission =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        micPermissionGranted = granted
         if (granted) geminiViewModel.start()
       }
 
@@ -62,6 +74,19 @@ fun BoxScope.GeminiOverlay(
     onDispose {
       geminiViewModel.setAnalysisCaptureProvider(null)
       geminiViewModel.stop()
+    }
+  }
+
+  // Starting the camera stream also starts Gemini. Android still requires a one-time microphone
+  // permission grant, but normal sessions do not require a separate "Talk to Gemini" action.
+  LaunchedEffect(streamUi.streamState, ui.status, micPermissionGranted) {
+    if (streamUi.streamState == StreamState.STREAMING && ui.status == GeminiStatus.IDLE) {
+      if (micPermissionGranted) {
+        geminiViewModel.start()
+      } else if (!micPermissionRequested) {
+        micPermissionRequested = true
+        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+      }
     }
   }
 
@@ -109,23 +134,23 @@ fun BoxScope.GeminiOverlay(
                   .background(Color.Black.copy(alpha = 0.55f))
                   .padding(horizontal = 12.dp, vertical = 6.dp),
       )
-      Button(
-          onClick = {
-            if (isOn) {
-              geminiViewModel.stop()
-            } else if (
-                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                    PackageManager.PERMISSION_GRANTED) {
-              geminiViewModel.start()
-            } else {
-              micPermission.launch(Manifest.permission.RECORD_AUDIO)
-            }
-          },
-          colors =
-              ButtonDefaults.buttonColors(
-                  containerColor = if (isOn) Color(0xFFFF5252) else MaterialTheme.colorScheme.primary),
+      if (
+          ui.status == GeminiStatus.ERROR ||
+              (!micPermissionGranted && micPermissionRequested && !isOn)
       ) {
-        Text(if (isOn) "Stop Gemini" else "Talk to Gemini")
+        Button(
+            onClick = {
+              if (micPermissionGranted) {
+                geminiViewModel.start()
+              } else {
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+              }
+            },
+            colors =
+                ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+        ) {
+          Text(if (micPermissionGranted) "Retry Gemini" else "Enable microphone")
+        }
       }
     }
 
