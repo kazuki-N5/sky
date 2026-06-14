@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bloom 3D Model</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #35442f;
+        --olive: #5d7740;
+        --panel: rgba(255, 253, 247, 0.78);
+        --line: rgba(93, 119, 64, 0.24);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 18%, #fffdf7 0, #fbf4e4 48%, #eadfc5 100%);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .embedded,
+      .embedded body {
+        background: transparent;
+      }
+
+      .embedded .hud {
+        display: none;
+      }
+
+      .hud {
+        position: fixed;
+        left: 22px;
+        right: 22px;
+        bottom: 18px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: end;
+        pointer-events: none;
+      }
+
+      .brand {
+        color: var(--olive);
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.66);
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 30px;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .brand span {
+        display: block;
+        margin-top: 4px;
+        font-size: 11px;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        pointer-events: auto;
+      }
+
+      .control-stack {
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+      }
+
+      .state-controls button {
+        min-width: 82px;
+      }
+
+      button {
+        appearance: none;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        padding: 0 12px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+      }
+
+      button[aria-pressed="true"] {
+        border-color: rgba(93, 119, 64, 0.5);
+        background: rgba(237, 245, 232, 0.88);
+        color: #405a2d;
+        box-shadow: inset 0 0 0 1px rgba(93, 119, 64, 0.3);
+      }
+
+      @media (max-width: 620px) {
+        .hud {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .brand strong {
+          font-size: 24px;
+        }
+
+        .controls {
+          justify-content: flex-start;
+        }
+
+        .control-stack {
+          justify-items: start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene" aria-label="Bloom standalone 3D model"></canvas>
+
+    <div class="hud">
+      <div class="brand">
+        <strong>BLOOM</strong>
+        <span>Emotional 3D Model</span>
+      </div>
+
+      <div class="control-stack">
+        <div class="controls state-controls" id="stateControls" aria-label="Bloom emotion states">
+          <button type="button" data-state="idle" aria-pressed="true">Idle</button>
+          <button type="button" data-state="listening" aria-pressed="false">Listening</button>
+          <button type="button" data-state="thinking" aria-pressed="false">Thinking</button>
+          <button type="button" data-state="speaking" aria-pressed="false">Speaking</button>
+          <button type="button" data-state="happy" aria-pressed="false">Happy</button>
+          <button type="button" data-state="lonely" aria-pressed="false">Lonely</button>
+          <button type="button" data-state="error" aria-pressed="false">Error</button>
+        </div>
+
+        <div class="controls" id="viewControls" aria-label="3D view controls">
+          <button type="button" data-view="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-view="front" aria-pressed="false">Front</button>
+          <button type="button" data-view="threeQuarter" aria-pressed="false">3/4</button>
+          <button type="button" data-view="side" aria-pressed="false">Side</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const embeddedMode = new URLSearchParams(window.location.search).get("embedded") === "1";
+      if (embeddedMode) document.documentElement.classList.add("embedded");
+
+      const canvas = document.getElementById("scene");
+      const gl = canvas.getContext("webgl", {
+        antialias: true,
+        alpha: embeddedMode,
+        premultipliedAlpha: false
+      });
+
+      if (!gl) {
+        document.body.innerHTML = "<p>WebGL is not available.</p>";
+        throw new Error("WebGL unavailable");
+      }
+
+      const vertexShaderSource = `
+        attribute vec3 aPosition;
+        attribute vec3 aNormal;
+
+        uniform mat4 uModel;
+        uniform mat4 uViewProjection;
+        uniform mat3 uNormalMatrix;
+
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vec4 world = uModel * vec4(aPosition, 1.0);
+          vWorldPosition = world.xyz;
+          vNormal = normalize(uNormalMatrix * aNormal);
+          gl_Position = uViewProjection * world;
+        }
+      `;
+
+      const fragmentShaderSource = `
+        precision mediump float;
+
+        uniform vec4 uColor;
+        uniform vec3 uLightDirection;
+        uniform vec3 uRimColor;
+        uniform float uGloss;
+
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+
+        void main() {
+          vec3 normal = normalize(vNormal);
+          float diffuse = max(dot(normal, normalize(uLightDirection)), 0.0);
+          float soft = 0.48 + diffuse * 0.48;
+          float rim = pow(1.0 - max(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0), 2.0);
+          vec3 color = uColor.rgb * soft + uRimColor * rim * 0.14;
+          color += vec3(1.0) * pow(diffuse, 18.0) * uGloss;
+          gl_FragColor = vec4(color, uColor.a);
+        }
+      `;
+
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(shader));
+        }
+        return shader;
+      }
+
+      function createProgram(vertexSource, fragmentSource) {
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(gl.VERTEX_SHADER, vertexSource));
+        gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, fragmentSource));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program));
+        }
+        return program;
+      }
+
+      const program = createProgram(vertexShaderSource, fragmentShaderSource);
+      gl.useProgram(program);
+
+      const attributes = {
+        position: gl.getAttribLocation(program, "aPosition"),
+        normal: gl.getAttribLocation(program, "aNormal")
+      };
+
+      const uniforms = {
+        model: gl.getUniformLocation(program, "uModel"),
+        viewProjection: gl.getUniformLocation(program, "uViewProjection"),
+        normalMatrix: gl.getUniformLocation(program, "uNormalMatrix"),
+        color: gl.getUniformLocation(program, "uColor"),
+        lightDirection: gl.getUniformLocation(program, "uLightDirection"),
+        rimColor: gl.getUniformLocation(program, "uRimColor"),
+        gloss: gl.getUniformLocation(program, "uGloss")
+      };
+
+      function makeSphere(rows = 28, columns = 36) {
+        const positions = [];
+        const normals = [];
+        const indices = [];
+
+        for (let row = 0; row <= rows; row++) {
+          const v = row / rows;
+          const phi = v * Math.PI;
+          for (let column = 0; column <= columns; column++) {
+            const u = column / columns;
+            const theta = u * Math.PI * 2;
+            const x = Math.sin(phi) * Math.cos(theta);
+            const y = Math.cos(phi);
+            const z = Math.sin(phi) * Math.sin(theta);
+            positions.push(x, y, z);
+            normals.push(x, y, z);
+          }
+        }
+
+        for (let row = 0; row < rows; row++) {
+          for (let column = 0; column < columns; column++) {
+            const a = row * (columns + 1) + column;
+            const b = a + columns + 1;
+            indices.push(a, b, a + 1, b, b + 1, a + 1);
+          }
+        }
+
+        return makeGeometry(positions, normals, indices);
+      }
+
+      function makeHeart(segments = 96) {
+        const points = [[0, -0.04, 0.02]];
+        for (let i = 0; i <= segments; i++) {
+          const t = (i / segments) * Math.PI * 2;
+          const x = 16 * Math.pow(Math.sin(t), 3) / 18;
+          const y = (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 18;
+          points.push([x, y - 0.16, 0.02]);
+        }
+
+        const positions = [];
+        const normals = [];
+        const indices = [];
+
+        for (const point of points) {
+          positions.push(point[0], point[1], point[2]);
+          normals.push(0, 0, 1);
+        }
+
+        for (let i = 1; i < points.length - 1; i++) {
+          indices.push(0, i, i + 1);
+        }
+
+        return makeGeometry(positions, normals, indices);
+      }
+
+      function makeSmile(segments = 28) {
+        const positions = [];
+        const normals = [];
+        const indices = [];
+        const width = 0.07;
+
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          const x = -1 + t * 2;
+          const y = -0.42 * (1 - x * x);
+          const dx = 2;
+          const dy = 0.84 * x;
+          const length = Math.hypot(dx, dy) || 1;
+          const nx = -dy / length;
+          const ny = dx / length;
+          positions.push(x + nx * width, y + ny * width, 0.03);
+          positions.push(x - nx * width, y - ny * width, 0.03);
+          normals.push(0, 0, 1, 0, 0, 1);
+        }
+
+        for (let i = 0; i < segments; i++) {
+          const a = i * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+
+        return makeGeometry(positions, normals, indices);
+      }
+
+      function makeFrown(segments = 28) {
+        const positions = [];
+        const normals = [];
+        const indices = [];
+        const width = 0.07;
+
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          const x = -1 + t * 2;
+          const y = 0.42 * (1 - x * x);
+          const dx = 2;
+          const dy = -0.84 * x;
+          const length = Math.hypot(dx, dy) || 1;
+          const nx = -dy / length;
+          const ny = dx / length;
+          positions.push(x + nx * width, y + ny * width, 0.03);
+          positions.push(x - nx * width, y - ny * width, 0.03);
+          normals.push(0, 0, 1, 0, 0, 1);
+        }
+
+        for (let i = 0; i < segments; i++) {
+          const a = i * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+
+        return makeGeometry(positions, normals, indices);
+      }
+
+      function makeTriangle() {
+        return makeGeometry(
+          [0, 0.58, 0.02, -0.50, -0.38, 0.02, 0.50, -0.38, 0.02],
+          [0, 0, 1, 0, 0, 1, 0, 0, 1],
+          [0, 1, 2]
+        );
+      }
+
+      function makeGeometry(positions, normals, indices) {
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const normalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+        const indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+        return { positionBuffer, normalBuffer, indexBuffer, indexCount: indices.length };
+      }
+
+      const sphere = embeddedMode ? makeSphere(16, 20) : makeSphere();
+      const heart = makeHeart(embeddedMode ? 48 : 96);
+      const smile = makeSmile(embeddedMode ? 20 : 28);
+      const frown = makeFrown(embeddedMode ? 20 : 28);
+      const triangle = makeTriangle();
+
+      const colors = {
+        line: [0.38, 0.47, 0.29, 1],
+        face: [1.0, 0.95, 0.80, 1],
+        body: [1.0, 0.92, 0.72, 1],
+        yellow: [0.95, 0.76, 0.30, 1],
+        coral: [0.94, 0.50, 0.40, 1],
+        sage: [0.58, 0.68, 0.38, 1],
+        lavender: [0.64, 0.55, 0.76, 1],
+        sky: [0.50, 0.75, 0.84, 1],
+        olive: [0.34, 0.47, 0.24, 1],
+        leaf: [0.46, 0.58, 0.31, 1],
+        heartWhite: [1.0, 0.99, 0.94, 1],
+        eye: [0.04, 0.18, 0.16, 1],
+        eyeLight: [0.55, 0.66, 0.38, 1],
+        cheek: [0.95, 0.62, 0.49, 0.78],
+        mouth: [0.11, 0.18, 0.16, 1],
+        shadow: [0.46, 0.42, 0.30, 0.22],
+        sound: [0.93, 0.47, 0.36, 0.82],
+        sparkle: [0.98, 0.76, 0.30, 0.92],
+        tear: [0.43, 0.68, 0.82, 0.82],
+        warning: [0.86, 0.35, 0.23, 0.92],
+        warningFill: [0.98, 0.76, 0.30, 0.24],
+        glitchBlue: [0.46, 0.68, 0.82, 0.86],
+        glitchCoral: [0.94, 0.50, 0.40, 0.86]
+      };
+
+      function part(name, mesh, position, scale, color, rotation = [0, 0, 0], gloss = 0.08, options = {}) {
+        return { name, mesh, position, scale, color, rotation, gloss, states: options.states || null };
+      }
+
+      const modelParts = [
+        part("shadow", sphere, [0, -1.27, -0.1], [0.82, 0.045, 0.34], colors.shadow, [0, 0, 0], 0),
+
+        part("petal_left_bottom_lavender", sphere, [-0.42, 0.34, -0.14], [0.42, 0.46, 0.13], colors.lavender, [0, 0, 0.12], 0.05),
+        part("petal_right_bottom_blue", sphere, [0.42, 0.34, -0.14], [0.42, 0.46, 0.13], colors.sky, [0, 0, -0.12], 0.05),
+        part("petal_left_coral", sphere, [-0.55, 0.72, -0.15], [0.47, 0.50, 0.14], colors.coral, [0, 0, 0.18], 0.06),
+        part("petal_right_green", sphere, [0.55, 0.72, -0.15], [0.47, 0.50, 0.14], colors.sage, [0, 0, -0.18], 0.06),
+        part("petal_top_yellow", sphere, [0, 1.02, -0.16], [0.49, 0.52, 0.14], colors.yellow, [0, 0, 0], 0.06),
+
+        part("leg_left", sphere, [-0.17, -1.02, 0.02], [0.13, 0.26, 0.12], colors.leaf, [0.05, 0, -0.12], 0.04),
+        part("leg_right", sphere, [0.17, -1.02, 0.02], [0.13, 0.26, 0.12], colors.leaf, [0.05, 0, 0.12], 0.04),
+        part("body_cream", sphere, [0, -0.48, 0.10], [0.39, 0.58, 0.25], colors.body, [0, 0, 0], 0.08),
+        part("arm_left", sphere, [-0.43, -0.48, 0.12], [0.11, 0.31, 0.09], colors.body, [0, 0, -0.5], 0.07),
+        part("arm_right", sphere, [0.43, -0.48, 0.12], [0.11, 0.31, 0.09], colors.body, [0, 0, 0.5], 0.07),
+
+        part("collar_left_leaf", sphere, [-0.22, -0.13, 0.34], [0.22, 0.12, 0.06], colors.leaf, [0.0, 0.0, -0.28], 0.04),
+        part("collar_right_leaf", sphere, [0.22, -0.13, 0.34], [0.22, 0.12, 0.06], colors.leaf, [0.0, 0.0, 0.28], 0.04),
+        part("collar_center_leaf", sphere, [0, -0.14, 0.37], [0.22, 0.10, 0.06], colors.leaf, [0, 0, 0], 0.04),
+        part("chest_leaf_plate", heart, [0, -0.45, 0.36], [0.39, 0.34, 1], colors.olive, [0, 0, 0], 0.03),
+        part("heart_core", heart, [0, -0.45, 0.39], [0.23, 0.20, 1], colors.heartWhite, [0, 0, 0], 0.12),
+
+        part("head_face", sphere, [0, 0.48, 0.24], [0.64, 0.64, 0.32], colors.face, [0, 0, 0], 0.09),
+
+        part("eye_left_open", sphere, [-0.22, 0.49, 0.56], [0.085, 0.13, 0.035], colors.eye, [0, 0, 0], 0.32),
+        part("eye_right_open", sphere, [0.22, 0.49, 0.56], [0.085, 0.13, 0.035], colors.eye, [0, 0, 0], 0.32),
+        part("eye_left_lower_light", sphere, [-0.19, 0.43, 0.59], [0.034, 0.044, 0.018], colors.eyeLight, [0, 0, 0], 0.22),
+        part("eye_right_lower_light", sphere, [0.25, 0.43, 0.59], [0.034, 0.044, 0.018], colors.eyeLight, [0, 0, 0], 0.22),
+        part("eye_left_highlight", sphere, [-0.25, 0.56, 0.60], [0.038, 0.047, 0.018], colors.heartWhite, [0, 0, 0], 0.4),
+        part("eye_right_highlight", sphere, [0.19, 0.56, 0.60], [0.038, 0.047, 0.018], colors.heartWhite, [0, 0, 0], 0.4),
+
+        part("cheek_left", sphere, [-0.38, 0.34, 0.55], [0.075, 0.045, 0.018], colors.cheek, [0, 0, 0], 0.06),
+        part("cheek_right", sphere, [0.38, 0.34, 0.55], [0.075, 0.045, 0.018], colors.cheek, [0, 0, 0], 0.06),
+
+        part("brow_left", sphere, [-0.23, 0.73, 0.54], [0.095, 0.014, 0.012], [0.78, 0.52, 0.36, 1], [0, 0, 0.14], 0.02),
+        part("brow_right", sphere, [0.23, 0.73, 0.54], [0.095, 0.014, 0.012], [0.78, 0.52, 0.36, 1], [0, 0, -0.14], 0.02),
+        part("mouth_smile", smile, [0, 0.32, 0.60], [0.17, 0.13, 1], colors.mouth, [0, 0, 0], 0.02)
+      ];
+
+      for (const [x, y, z, sx, sy, color, name] of [
+        [-0.34, 0.54, 0.58, 0.018, 0.060, colors.mouth, "lash_left_outer"],
+        [-0.31, 0.61, 0.58, 0.014, 0.054, colors.mouth, "lash_left_upper"],
+        [0.34, 0.54, 0.58, 0.018, 0.060, colors.mouth, "lash_right_outer"],
+        [0.31, 0.61, 0.58, 0.014, 0.054, colors.mouth, "lash_right_upper"]
+      ]) {
+        modelParts.push(part(name, sphere, [x, y, z], [sx, sy, 0.010], color, [0, 0, x < 0 ? -0.6 : 0.6], 0.02));
+      }
+
+      modelParts.push(
+        part("eye_left_closed", frown, [-0.22, 0.51, 0.61], [0.065, 0.040, 1], colors.mouth, [0, 0, 0], 0.02, { states: ["happy"] }),
+        part("eye_right_closed", frown, [0.22, 0.51, 0.61], [0.065, 0.040, 1], colors.mouth, [0, 0, 0], 0.02, { states: ["happy"] }),
+        part("mouth_open", sphere, [0, 0.30, 0.61], [0.070, 0.095, 0.028], colors.mouth, [0, 0, 0], 0.03, { states: ["speaking", "happy"] }),
+        part("mouth_small", sphere, [0, 0.30, 0.61], [0.026, 0.018, 0.018], colors.mouth, [0, 0, 0], 0.02, { states: ["thinking"] }),
+        part("mouth_frown", frown, [0, 0.30, 0.61], [0.135, 0.105, 1], colors.mouth, [0, 0, 0], 0.02, { states: ["lonely", "error"] }),
+
+        part("tear_left", sphere, [-0.30, 0.36, 0.60], [0.024, 0.046, 0.014], colors.tear, [0, 0, -0.14], 0.08, { states: ["lonely"] }),
+        part("tear_right", sphere, [0.30, 0.36, 0.60], [0.024, 0.046, 0.014], colors.tear, [0, 0, 0.14], 0.08, { states: ["lonely"] }),
+
+        part("question_curve_1", sphere, [0.48, 0.92, 0.55], [0.030, 0.038, 0.014], colors.olive, [0, 0, 0], 0.05, { states: ["thinking"] }),
+        part("question_curve_2", sphere, [0.58, 1.02, 0.55], [0.036, 0.045, 0.014], colors.olive, [0, 0, 0], 0.05, { states: ["thinking"] }),
+        part("question_curve_3", sphere, [0.48, 1.12, 0.55], [0.030, 0.038, 0.014], colors.olive, [0, 0, 0], 0.05, { states: ["thinking"] }),
+        part("question_dot", sphere, [0.46, 0.80, 0.55], [0.026, 0.026, 0.014], colors.olive, [0, 0, 0], 0.05, { states: ["thinking"] }),
+
+        part("sound_mark_1", sphere, [0.72, 0.50, 0.53], [0.026, 0.110, 0.012], colors.sound, [0, 0, -0.92], 0.03, { states: ["listening", "speaking"] }),
+        part("sound_mark_2", sphere, [0.78, 0.38, 0.53], [0.022, 0.090, 0.012], colors.sound, [0, 0, -1.16], 0.03, { states: ["speaking"] }),
+        part("sound_mark_3", sphere, [0.77, 0.64, 0.53], [0.022, 0.090, 0.012], colors.sound, [0, 0, -0.68], 0.03, { states: ["speaking"] }),
+
+        part("happy_heart_left", heart, [-0.72, 0.12, 0.48], [0.080, 0.070, 1], colors.coral, [0, 0, -0.22], 0.06, { states: ["happy"] }),
+        part("happy_heart_right", heart, [0.72, 0.18, 0.48], [0.070, 0.060, 1], colors.sparkle, [0, 0, 0.18], 0.06, { states: ["happy"] }),
+        part("sparkle_top", sphere, [0.58, 0.96, 0.52], [0.020, 0.068, 0.010], colors.sparkle, [0, 0, 0], 0.10, { states: ["happy"] }),
+        part("sparkle_top_cross", sphere, [0.58, 0.96, 0.52], [0.068, 0.020, 0.010], colors.sparkle, [0, 0, 0], 0.10, { states: ["happy"] }),
+
+        part("warning_icon_fill", triangle, [0.78, -0.16, 0.52], [0.17, 0.17, 1], colors.warningFill, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("warning_icon_stem", sphere, [0.78, -0.15, 0.55], [0.014, 0.060, 0.010], colors.warning, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("warning_icon_dot", sphere, [0.78, -0.25, 0.55], [0.016, 0.016, 0.010], colors.warning, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("glitch_left_1", sphere, [-0.78, 0.20, 0.49], [0.030, 0.030, 0.010], colors.glitchBlue, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("glitch_left_2", sphere, [-0.70, 0.10, 0.49], [0.026, 0.026, 0.010], colors.glitchCoral, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("glitch_right_1", sphere, [0.94, 0.24, 0.49], [0.026, 0.026, 0.010], colors.glitchCoral, [0, 0, 0], 0.02, { states: ["error"] }),
+        part("glitch_right_2", sphere, [0.88, 0.04, 0.49], [0.030, 0.030, 0.010], colors.glitchBlue, [0, 0, 0], 0.02, { states: ["error"] })
+      );
+
+      window.__bloom3DPartCount = modelParts.length;
+      window.__bloom3DFrameStats = {
+        frame: 0,
+        canvas: [0, 0],
+        centerPixel: [0, 0, 0, 0]
+      };
+
+      const mat4 = {
+        identity() {
+          return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+        },
+        multiply(a, b) {
+          const out = new Array(16);
+          for (let row = 0; row < 4; row++) {
+            for (let col = 0; col < 4; col++) {
+              out[col * 4 + row] =
+                a[0 * 4 + row] * b[col * 4 + 0] +
+                a[1 * 4 + row] * b[col * 4 + 1] +
+                a[2 * 4 + row] * b[col * 4 + 2] +
+                a[3 * 4 + row] * b[col * 4 + 3];
+            }
+          }
+          return out;
+        },
+        translate(x, y, z) {
+          const out = mat4.identity();
+          out[12] = x;
+          out[13] = y;
+          out[14] = z;
+          return out;
+        },
+        scale(x, y, z) {
+          const out = mat4.identity();
+          out[0] = x;
+          out[5] = y;
+          out[10] = z;
+          return out;
+        },
+        rotateX(rad) {
+          const c = Math.cos(rad);
+          const s = Math.sin(rad);
+          return [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1];
+        },
+        rotateY(rad) {
+          const c = Math.cos(rad);
+          const s = Math.sin(rad);
+          return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
+        },
+        rotateZ(rad) {
+          const c = Math.cos(rad);
+          const s = Math.sin(rad);
+          return [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+        },
+        perspective(fovy, aspect, near, far) {
+          const f = 1 / Math.tan(fovy / 2);
+          const nf = 1 / (near - far);
+          return [
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (far + near) * nf, -1,
+            0, 0, (2 * far * near) * nf, 0
+          ];
+        },
+        lookAt(eye, center, up) {
+          const z = normalize([eye[0] - center[0], eye[1] - center[1], eye[2] - center[2]]);
+          const x = normalize(cross(up, z));
+          const y = cross(z, x);
+          return [
+            x[0], y[0], z[0], 0,
+            x[1], y[1], z[1], 0,
+            x[2], y[2], z[2], 0,
+            -dot(x, eye), -dot(y, eye), -dot(z, eye), 1
+          ];
+        }
+      };
+
+      function dot(a, b) {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      }
+
+      function cross(a, b) {
+        return [
+          a[1] * b[2] - a[2] * b[1],
+          a[2] * b[0] - a[0] * b[2],
+          a[0] * b[1] - a[1] * b[0]
+        ];
+      }
+
+      function normalize(v) {
+        const length = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / length, v[1] / length, v[2] / length];
+      }
+
+      function compose(position, rotation, scale) {
+        let out = mat4.translate(position[0], position[1], position[2]);
+        out = mat4.multiply(out, mat4.rotateZ(rotation[2]));
+        out = mat4.multiply(out, mat4.rotateY(rotation[1]));
+        out = mat4.multiply(out, mat4.rotateX(rotation[0]));
+        out = mat4.multiply(out, mat4.scale(scale[0], scale[1], scale[2]));
+        return out;
+      }
+
+      function normalMatrixFromMat4(m) {
+        const a00 = m[0], a01 = m[1], a02 = m[2];
+        const a10 = m[4], a11 = m[5], a12 = m[6];
+        const a20 = m[8], a21 = m[9], a22 = m[10];
+
+        const b01 = a22 * a11 - a12 * a21;
+        const b11 = -a22 * a10 + a12 * a20;
+        const b21 = a21 * a10 - a11 * a20;
+        let det = a00 * b01 + a01 * b11 + a02 * b21;
+        if (!det) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+        det = 1.0 / det;
+
+        return [
+          b01 * det,
+          (-a22 * a01 + a02 * a21) * det,
+          (a12 * a01 - a02 * a11) * det,
+          b11 * det,
+          (a22 * a00 - a02 * a20) * det,
+          (-a12 * a00 + a02 * a10) * det,
+          b21 * det,
+          (-a21 * a00 + a01 * a20) * det,
+          (a11 * a00 - a01 * a10) * det
+        ];
+      }
+
+      function bindGeometry(geometry) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, geometry.positionBuffer);
+        gl.enableVertexAttribArray(attributes.position);
+        gl.vertexAttribPointer(attributes.position, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, geometry.normalBuffer);
+        gl.enableVertexAttribArray(attributes.normal);
+        gl.vertexAttribPointer(attributes.normal, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geometry.indexBuffer);
+      }
+
+      let viewMode = embeddedMode ? "front" : "auto";
+      let autoRotate = !embeddedMode;
+      let targetRotationY = embeddedMode ? 0 : 0.22;
+      let targetRotationX = embeddedMode ? -0.04 : -0.08;
+      let rotationY = targetRotationY;
+      let rotationX = targetRotationX;
+      let dragStart = null;
+      let bloomState = "idle";
+
+      function setBloomState(nextState) {
+        bloomState = nextState;
+        document.body.dataset.state = bloomState;
+        for (const control of document.querySelectorAll("#stateControls button")) {
+          control.setAttribute("aria-pressed", String(control.dataset.state === bloomState));
+        }
+      }
+
+      window.setBloom3DState = setBloomState;
+
+      document.getElementById("stateControls").addEventListener("click", (event) => {
+        const button = event.target.closest("button");
+        if (!button) return;
+        setBloomState(button.dataset.state);
+      });
+
+      document.getElementById("viewControls").addEventListener("click", (event) => {
+        const button = event.target.closest("button");
+        if (!button) return;
+
+        viewMode = button.dataset.view;
+        autoRotate = viewMode === "auto";
+
+        if (viewMode === "front") {
+          targetRotationY = 0;
+          targetRotationX = -0.04;
+        } else if (viewMode === "threeQuarter") {
+          targetRotationY = 0.58;
+          targetRotationX = -0.08;
+        } else if (viewMode === "side") {
+          targetRotationY = 1.08;
+          targetRotationX = -0.04;
+        }
+
+        for (const control of document.querySelectorAll("#viewControls button")) {
+          control.setAttribute("aria-pressed", String(control === button));
+        }
+      });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        dragStart = { x: event.clientX, y: event.clientY, rotationY, rotationX };
+        canvas.setPointerCapture(event.pointerId);
+        autoRotate = false;
+        document.querySelector('[data-view="auto"]').setAttribute("aria-pressed", "false");
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (!dragStart) return;
+        targetRotationY = dragStart.rotationY + (event.clientX - dragStart.x) * 0.01;
+        targetRotationX = Math.max(-0.55, Math.min(0.35, dragStart.rotationX + (event.clientY - dragStart.y) * 0.006));
+      });
+
+      canvas.addEventListener("pointerup", () => {
+        dragStart = null;
+      });
+
+      gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform3f(uniforms.lightDirection, -0.48, 0.76, 0.58);
+      gl.uniform3f(uniforms.rimColor, 1.0, 0.96, 0.84);
+
+      function resize() {
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.floor(canvas.clientWidth * pixelRatio));
+        const height = Math.max(1, Math.floor(canvas.clientHeight * pixelRatio));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          gl.viewport(0, 0, width, height);
+        }
+      }
+
+      const openEyePartNames = new Set([
+        "eye_left_open",
+        "eye_right_open",
+        "eye_left_lower_light",
+        "eye_right_lower_light",
+        "eye_left_highlight",
+        "eye_right_highlight",
+        "lash_left_outer",
+        "lash_left_upper",
+        "lash_right_outer",
+        "lash_right_upper"
+      ]);
+      const baseSmileStates = new Set(["idle", "listening"]);
+      const petalNames = [
+        "petal_top_yellow",
+        "petal_left_coral",
+        "petal_right_green",
+        "petal_left_bottom_lavender",
+        "petal_right_bottom_blue"
+      ];
+
+      function isPartVisible(object, pose) {
+        if (pose.hidden.has(object.name)) return false;
+        if (object.states && !object.states.includes(bloomState)) return false;
+        if (object.name === "mouth_smile" && !baseSmileStates.has(bloomState)) return false;
+        if (bloomState === "happy" && openEyePartNames.has(object.name)) return false;
+        if (bloomState === "happy" && object.name.startsWith("brow_")) return false;
+        return true;
+      }
+
+      function amend(parts, name, adjustment) {
+        parts[name] = Object.assign(parts[name] || {}, adjustment);
+      }
+
+      function makeStatePose(seconds) {
+        const pose = {
+          offset: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: 1,
+          parts: {},
+          hidden: new Set()
+        };
+        const soft = Math.sin(seconds * 1.7);
+        const blink = Math.sin(seconds * 4.2);
+        const pulse = 1 + Math.sin(seconds * 3.8) * 0.10;
+
+        amend(pose.parts, "petal_top_yellow", { rotateOffset: [0, 0, soft * 0.012], scaleMultiplier: [1 + soft * 0.010, 1 + soft * 0.010, 1] });
+        amend(pose.parts, "petal_left_coral", { rotateOffset: [0, 0, soft * 0.018], scaleMultiplier: [1 + soft * 0.008, 1 + soft * 0.008, 1] });
+        amend(pose.parts, "petal_right_green", { rotateOffset: [0, 0, -soft * 0.018], scaleMultiplier: [1 - soft * 0.008, 1 - soft * 0.008, 1] });
+
+        if (bloomState === "listening") {
+          pose.rotation[0] = -0.055;
+          pose.offset[2] = 0.02;
+          amend(pose.parts, "head_face", { positionOffset: [0, 0.025, 0.014], scaleMultiplier: [1.015, 1.015, 1] });
+          amend(pose.parts, "eye_left_open", { scaleMultiplier: [1.08, 1.10, 1] });
+          amend(pose.parts, "eye_right_open", { scaleMultiplier: [1.08, 1.10, 1] });
+          amend(pose.parts, "arm_left", { position: [-0.37, -0.20, 0.30], rotation: [0, 0, -0.90], scale: [0.105, 0.30, 0.09] });
+          amend(pose.parts, "arm_right", { position: [0.46, -0.45, 0.13], rotation: [0, 0, 0.38] });
+          amend(pose.parts, "sound_mark_1", { scaleMultiplier: [pulse, pulse, 1] });
+        } else if (bloomState === "thinking") {
+          pose.rotation[2] = -0.035;
+          pose.offset[1] = Math.sin(seconds * 1.3) * 0.010;
+          amend(pose.parts, "arm_left", { position: [-0.17, -0.10, 0.42], rotation: [0, 0, -0.20], scale: [0.105, 0.31, 0.09] });
+          amend(pose.parts, "arm_right", { position: [0.43, -0.58, 0.12], rotation: [0, 0, 0.32] });
+          for (const name of ["eye_left_open", "eye_right_open", "eye_left_lower_light", "eye_right_lower_light", "eye_left_highlight", "eye_right_highlight"]) {
+            amend(pose.parts, name, { positionOffset: [0.025, 0.030, 0] });
+          }
+          amend(pose.parts, "brow_left", { rotation: [0, 0, 0.05] });
+          amend(pose.parts, "brow_right", { rotation: [0, 0, -0.05] });
+          for (const name of ["question_curve_1", "question_curve_2", "question_curve_3", "question_dot"]) {
+            amend(pose.parts, name, { positionOffset: [0, Math.sin(seconds * 2.6) * 0.018, 0], scaleMultiplier: [pulse, pulse, 1] });
+          }
+        } else if (bloomState === "speaking") {
+          const mouthPulse = 0.82 + Math.abs(Math.sin(seconds * 9.0)) * 0.52;
+          pose.rotation[2] = Math.sin(seconds * 2.0) * 0.025;
+          amend(pose.parts, "mouth_open", { scale: [0.070, 0.070 * mouthPulse, 0.028] });
+          amend(pose.parts, "arm_right", { position: [0.50, -0.28, 0.18], rotation: [0, 0, 0.92 + Math.sin(seconds * 4.6) * 0.22], scale: [0.105, 0.30, 0.09] });
+          amend(pose.parts, "arm_left", { position: [-0.44, -0.50, 0.13], rotation: [0, 0, -0.42] });
+          for (const name of ["sound_mark_1", "sound_mark_2", "sound_mark_3"]) {
+            amend(pose.parts, name, { scaleMultiplier: [pulse, pulse, 1], positionOffset: [Math.sin(seconds * 5.0) * 0.015, 0, 0] });
+          }
+        } else if (bloomState === "happy") {
+          const bounce = Math.abs(Math.sin(seconds * 4.0));
+          pose.offset[1] = 0.035 + bounce * 0.075;
+          pose.scale = 1.02 + bounce * 0.025;
+          amend(pose.parts, "mouth_open", { position: [0, 0.27, 0.62], scale: [0.082, 0.074, 0.026], color: [0.34, 0.14, 0.12, 1] });
+          amend(pose.parts, "arm_left", { position: [-0.48, -0.08, 0.32], rotation: [0, 0, -1.34], scale: [0.110, 0.34, 0.09] });
+          amend(pose.parts, "arm_right", { position: [0.48, -0.08, 0.32], rotation: [0, 0, 1.34], scale: [0.110, 0.34, 0.09] });
+          amend(pose.parts, "petal_top_yellow", { positionOffset: [0, 0.070, 0], scaleMultiplier: [1.10, 1.10, 1] });
+          amend(pose.parts, "petal_left_coral", { positionOffset: [-0.055, 0.030, 0], rotateOffset: [0, 0, 0.075], scaleMultiplier: [1.08, 1.08, 1] });
+          amend(pose.parts, "petal_right_green", { positionOffset: [0.055, 0.030, 0], rotateOffset: [0, 0, -0.075], scaleMultiplier: [1.08, 1.08, 1] });
+          amend(pose.parts, "petal_left_bottom_lavender", { positionOffset: [-0.035, -0.010, 0], scaleMultiplier: [1.05, 1.05, 1] });
+          amend(pose.parts, "petal_right_bottom_blue", { positionOffset: [0.035, -0.010, 0], scaleMultiplier: [1.05, 1.05, 1] });
+          for (const name of ["happy_heart_left", "happy_heart_right", "sparkle_top", "sparkle_top_cross"]) {
+            amend(pose.parts, name, { scaleMultiplier: [pulse, pulse, 1], positionOffset: [0, Math.sin(seconds * 3.2) * 0.020, 0] });
+          }
+        } else if (bloomState === "lonely") {
+          pose.scale = 0.93;
+          pose.offset[1] = -0.075 + Math.sin(seconds * 1.2) * 0.008;
+          pose.rotation[2] = Math.sin(seconds * 1.1) * 0.015;
+          amend(pose.parts, "head_face", { positionOffset: [0, -0.035, 0], scaleMultiplier: [0.98, 0.98, 1] });
+          for (const name of petalNames) {
+            amend(pose.parts, name, { positionOffset: [0, -0.045, 0], scaleMultiplier: [0.94, 0.94, 1] });
+          }
+          amend(pose.parts, "arm_left", { position: [-0.34, -0.62, 0.12], rotation: [0, 0, -0.18], scale: [0.095, 0.27, 0.08] });
+          amend(pose.parts, "arm_right", { position: [0.34, -0.62, 0.12], rotation: [0, 0, 0.18], scale: [0.095, 0.27, 0.08] });
+          amend(pose.parts, "eye_left_open", { positionOffset: [0, -0.030, 0], scaleMultiplier: [0.92, 1.06, 1] });
+          amend(pose.parts, "eye_right_open", { positionOffset: [0, -0.030, 0], scaleMultiplier: [0.92, 1.06, 1] });
+          amend(pose.parts, "brow_left", { positionOffset: [0, -0.030, 0], rotation: [0, 0, -0.13] });
+          amend(pose.parts, "brow_right", { positionOffset: [0, -0.030, 0], rotation: [0, 0, 0.13] });
+          amend(pose.parts, "tear_left", { positionOffset: [0, Math.sin(seconds * 2.0) * 0.014, 0] });
+          amend(pose.parts, "tear_right", { positionOffset: [0, Math.sin(seconds * 2.0 + 0.8) * 0.014, 0] });
+        } else if (bloomState === "error") {
+          const jitter = Math.sin(seconds * 28.0) * 0.018;
+          pose.offset[0] = jitter;
+          pose.rotation[2] = Math.sin(seconds * 22.0) * 0.018;
+          amend(pose.parts, "head_face", { positionOffset: [jitter * 0.8, 0, 0] });
+          amend(pose.parts, "eye_left_open", { scaleMultiplier: [0.88, 0.92, 1], positionOffset: [-0.010, -0.020, 0] });
+          amend(pose.parts, "eye_right_open", { scaleMultiplier: [0.88, 0.92, 1], positionOffset: [0.010, -0.020, 0] });
+          amend(pose.parts, "brow_left", { rotation: [0, 0, -0.35], positionOffset: [0, -0.010, 0] });
+          amend(pose.parts, "brow_right", { rotation: [0, 0, 0.35], positionOffset: [0, -0.010, 0] });
+          amend(pose.parts, "mouth_frown", { scaleMultiplier: [0.90, 0.90, 1] });
+          for (const name of ["warning_icon_fill", "warning_icon_stem", "warning_icon_dot"]) {
+            amend(pose.parts, name, { scaleMultiplier: [pulse, pulse, 1] });
+          }
+          for (const name of ["glitch_left_1", "glitch_left_2", "glitch_right_1", "glitch_right_2"]) {
+            amend(pose.parts, name, { positionOffset: [Math.sin(seconds * 20.0 + name.length) * 0.020, Math.cos(seconds * 18.0 + name.length) * 0.014, 0] });
+          }
+        } else {
+          const blinkAmount = blink > 0.975 ? 0.20 : 1;
+          amend(pose.parts, "eye_left_open", { scaleMultiplier: [1, blinkAmount, 1] });
+          amend(pose.parts, "eye_right_open", { scaleMultiplier: [1, blinkAmount, 1] });
+        }
+
+        return pose;
+      }
+
+      function applyPartAdjustment(object, adjustment) {
+        const position = object.position.slice();
+        const rotation = object.rotation.slice();
+        const scale = object.scale.slice();
+        let color = object.color;
+        let gloss = object.gloss;
+
+        if (!adjustment) {
+          return { position, rotation, scale, color, gloss };
+        }
+
+        if (adjustment.position) {
+          position[0] = adjustment.position[0];
+          position[1] = adjustment.position[1];
+          position[2] = adjustment.position[2];
+        }
+        if (adjustment.positionOffset) {
+          position[0] += adjustment.positionOffset[0] || 0;
+          position[1] += adjustment.positionOffset[1] || 0;
+          position[2] += adjustment.positionOffset[2] || 0;
+        }
+        if (adjustment.rotation) {
+          rotation[0] = adjustment.rotation[0];
+          rotation[1] = adjustment.rotation[1];
+          rotation[2] = adjustment.rotation[2];
+        }
+        if (adjustment.rotateOffset) {
+          rotation[0] += adjustment.rotateOffset[0] || 0;
+          rotation[1] += adjustment.rotateOffset[1] || 0;
+          rotation[2] += adjustment.rotateOffset[2] || 0;
+        }
+        if (adjustment.scale) {
+          scale[0] = adjustment.scale[0];
+          scale[1] = adjustment.scale[1];
+          scale[2] = adjustment.scale[2];
+        }
+        if (adjustment.scaleMultiplier) {
+          scale[0] *= adjustment.scaleMultiplier[0] ?? adjustment.scaleMultiplier;
+          scale[1] *= adjustment.scaleMultiplier[1] ?? adjustment.scaleMultiplier;
+          scale[2] *= adjustment.scaleMultiplier[2] ?? 1;
+        }
+        if (adjustment.color) color = adjustment.color;
+        if (adjustment.gloss !== undefined) gloss = adjustment.gloss;
+
+        return { position, rotation, scale, color, gloss };
+      }
+
+      let lastRenderTime = 0;
+
+      function render(time) {
+        if (embeddedMode && time - lastRenderTime < 1000 / 30) {
+          window.requestAnimationFrame(render);
+          return;
+        }
+        lastRenderTime = time;
+        resize();
+
+        const seconds = time * 0.001;
+        const pose = makeStatePose(seconds);
+        if (autoRotate) {
+          targetRotationY = 0.24 + Math.sin(seconds * 0.36) * 0.28;
+          targetRotationX = -0.08 + Math.sin(seconds * 0.24) * 0.04;
+        }
+
+        rotationY += (targetRotationY - rotationY) * 0.08;
+        rotationX += (targetRotationX - rotationX) * 0.08;
+
+        if (embeddedMode) {
+          gl.clearColor(0, 0, 0, 0);
+        } else {
+          gl.clearColor(0.98, 0.95, 0.88, 1);
+        }
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        const aspect = canvas.width / canvas.height;
+        const projection = mat4.perspective(Math.PI / 5.0, aspect, 0.1, 20);
+        const view = mat4.lookAt([0, 0.14, 5.2], [0, 0.05, 0], [0, 1, 0]);
+        const viewProjection = mat4.multiply(projection, view);
+        const bob = Math.sin(seconds * 1.8) * 0.026;
+        const compact = aspect < 0.7;
+        const globalScale = (embeddedMode ? 1.08 : (compact ? 0.66 : 0.82)) * pose.scale;
+        const baseY = embeddedMode ? 0.04 : (compact ? 0.28 : 0.08);
+        let group = mat4.translate(pose.offset[0], baseY + bob + pose.offset[1], pose.offset[2]);
+        group = mat4.multiply(group, mat4.scale(globalScale, globalScale, globalScale));
+        group = mat4.multiply(group, mat4.rotateZ(pose.rotation[2]));
+        group = mat4.multiply(group, mat4.rotateX(pose.rotation[0]));
+        group = mat4.multiply(group, mat4.rotateY(rotationY + pose.rotation[1]));
+        group = mat4.multiply(group, mat4.rotateX(rotationX));
+
+        gl.uniformMatrix4fv(uniforms.viewProjection, false, new Float32Array(viewProjection));
+
+        let visibleParts = 0;
+        for (const object of modelParts) {
+          if (!isPartVisible(object, pose)) continue;
+          visibleParts += 1;
+          const adjusted = applyPartAdjustment(object, pose.parts[object.name]);
+          const local = compose(adjusted.position, adjusted.rotation, adjusted.scale);
+          const model = mat4.multiply(group, local);
+          bindGeometry(object.mesh);
+          gl.uniformMatrix4fv(uniforms.model, false, new Float32Array(model));
+          gl.uniformMatrix3fv(uniforms.normalMatrix, false, new Float32Array(normalMatrixFromMat4(model)));
+          gl.uniform4fv(uniforms.color, new Float32Array(adjusted.color));
+          gl.uniform1f(uniforms.gloss, adjusted.gloss);
+          gl.drawElements(gl.TRIANGLES, object.mesh.indexCount, gl.UNSIGNED_SHORT, 0);
+        }
+
+        const centerPixel = new Uint8Array(4);
+        if (!embeddedMode) {
+          gl.readPixels(
+            Math.floor(canvas.width * 0.5),
+            Math.floor(canvas.height * 0.54),
+            1,
+            1,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            centerPixel
+          );
+        }
+        window.__bloom3DFrameStats = {
+          frame: window.__bloom3DFrameStats.frame + 1,
+          state: bloomState,
+          visibleParts,
+          canvas: [canvas.width, canvas.height],
+          centerPixel: Array.from(centerPixel)
+        };
+
+        window.requestAnimationFrame(render);
+      }
+
+      window.requestAnimationFrame(render);
+    </script>
+  </body>
+</html>

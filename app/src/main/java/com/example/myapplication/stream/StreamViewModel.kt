@@ -85,7 +85,7 @@ class StreamViewModel(
     // Frames are presented based on timestamp, not arrival time
     val queue =
         PresentationQueue(
-            bufferDelayMs = 100L,
+            bufferDelayMs = 30L,
             maxQueueSize = 15,
             onFrameReady = { frame ->
               viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
@@ -135,7 +135,7 @@ class StreamViewModel(
           stream?.stop()
           stream = null
           session
-              ?.addStream(StreamConfiguration(videoQuality = VideoQuality.MEDIUM, frameRate = 24))
+              ?.addStream(StreamConfiguration(videoQuality = VideoQuality.MEDIUM, frameRate = 15))
               ?.onSuccess { addedStream ->
                 stream = addedStream
                 videoJob = viewModelScope.launch {
@@ -329,7 +329,8 @@ class StreamViewModel(
           }
         }
     _uiState.update { it.copy(capturedPhoto = capturedPhoto, isShareDialogVisible = true) }
-    JournalRepo.addRecord("📷 写真を撮影しました")
+    val imagePath = JournalRepo.saveImage(capturedPhoto)
+    JournalRepo.addRecord("📷 写真を撮影しました", imagePath = imagePath)
   }
 
   // HEIC Decoding with EXIF transformation

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -67,17 +68,13 @@ fun BoxScope.GeminiOverlay(
     }
   }
 
-  // AI avatar: talking video while Gemini speaks, idle video otherwise.
-  if (ui.status == GeminiStatus.LIVE || ui.status == GeminiStatus.CONNECTING) {
-    AvatarVideo(
-        speaking = ui.speaking,
-        modifier =
-            Modifier.align(Alignment.CenterEnd)
-                .padding(16.dp)
-                .size(150.dp)
-                .clip(RoundedCornerShape(16.dp)),
-    )
-  }
+  // AI avatar temporarily disabled (nothing is shown for now). The Bloom 3D WebView
+  // rendered WebGL fine when opaque + LAYER_TYPE_HARDWARE, but stayed invisible with a
+  // transparent background over the camera. To re-enable, restore here:
+  //   if (ui.status == GeminiStatus.LIVE || ui.status == GeminiStatus.CONNECTING)
+  //     BloomAvatar(speaking = ui.speaking,
+  //         modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding()
+  //             .padding(16.dp).size(170.dp))
 
   Column(
       modifier =

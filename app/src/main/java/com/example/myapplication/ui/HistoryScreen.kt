@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -31,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,13 +83,23 @@ fun HistoryScreen(viewModel: JournalViewModel, modifier: Modifier = Modifier) {
           Text("記録はありません", style = MaterialTheme.typography.bodyMedium)
         } else {
           entry.records.forEach { r ->
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-              Text(
-                  r.time,
-                  fontWeight = FontWeight.SemiBold,
-                  modifier = Modifier.padding(end = 10.dp),
-              )
-              Text(r.text)
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+              Row {
+                Text(
+                    r.time,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(end = 10.dp),
+                )
+                Text(r.text)
+              }
+              r.imagePath?.let { path ->
+                Spacer(Modifier.height(6.dp))
+                RecordImage(
+                    path = path,
+                    modifier =
+                        Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(12.dp)),
+                )
+              }
             }
             HorizontalDivider()
           }

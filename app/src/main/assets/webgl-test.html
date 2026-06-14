@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body style="margin:0;background:#000">
+    <!-- Fixed-size canvas so this isolates WebGL rendering, not the height:100% sizing bug. -->
+    <canvas id="c" width="300" height="300" style="width:160px;height:160px;display:block"></canvas>
+    <div id="t" style="position:fixed;top:0;left:0;color:#0ff;font:12px monospace;background:#000;padding:2px"></div>
+    <script>
+      var c = document.getElementById("c"), t = document.getElementById("t");
+      var gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+      if (!gl) {
+        t.textContent = "NO WEBGL CONTEXT";
+        document.body.style.background = "#550000";
+      } else {
+        gl.clearColor(1, 0, 0, 1); // red = WebGL cleared the buffer
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, "attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}");
+        gl.compileShader(vs);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, "void main(){gl_FragColor=vec4(0.0,1.0,0.0,1.0);}");
+        gl.compileShader(fs);
+        var pr = gl.createProgram();
+        gl.attachShader(pr, vs); gl.attachShader(pr, fs); gl.linkProgram(pr); gl.useProgram(pr);
+        var b = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0.8, -0.8, -0.8, 0.8, -0.8]), gl.STATIC_DRAW);
+        var loc = gl.getAttribLocation(pr, "p");
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3); // green triangle = WebGL drew geometry
+        t.textContent = "WEBGL OK";
+        if (window.BloomLog) window.BloomLog.log("webgl-test: WEBGL OK " + gl.getParameter(gl.VERSION));
+      }
+    </script>
+  </body>
+</html>
