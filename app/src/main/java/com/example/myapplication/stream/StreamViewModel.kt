@@ -86,7 +86,7 @@ class StreamViewModel(
     val queue =
         PresentationQueue(
             bufferDelayMs = 30L,
-            maxQueueSize = 15,
+            maxQueueSize = 4,
             onFrameReady = { frame ->
               viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                 _uiState.update {
@@ -263,6 +263,25 @@ class StreamViewModel(
     }
   }
 
+  /**
+   * Captures a high-resolution frame for background analysis without opening the share dialog or
+   * adding a journal record. The caller owns the returned bitmap.
+   */
+  suspend fun captureForAnalysis(): Bitmap? {
+    if (uiState.value.streamState != StreamState.STREAMING) {
+      return uiState.value.videoFrame?.safeCopy()
+    }
+    val activeStream = stream ?: return uiState.value.videoFrame?.safeCopy()
+    var captured: Bitmap? = null
+    activeStream
+        .capturePhoto()
+        .onSuccess { photoData -> captured = decodePhotoData(photoData) }
+        .onFailure { error, _ ->
+          Log.w(TAG, "Analysis photo capture failed: ${error.description}")
+        }
+    return captured ?: uiState.value.videoFrame?.safeCopy()
+  }
+
   fun showShareDialog() {
     _uiState.update { it.copy(isShareDialogVisible = true) }
   }
@@ -315,23 +334,22 @@ class StreamViewModel(
   }
 
   private fun handlePhotoData(photo: PhotoData) {
-    val capturedPhoto =
-        when (photo) {
-          is PhotoData.Bitmap -> photo.bitmap
-          is PhotoData.HEIC -> {
-            val byteArray = ByteArray(photo.data.remaining())
-            photo.data.get(byteArray)
-
-            // Extract EXIF transformation matrix and apply to bitmap
-            val exifInfo = getExifInfo(byteArray)
-            val transform = getTransform(exifInfo)
-            decodeHeic(byteArray, transform)
-          }
-        }
+    val capturedPhoto = decodePhotoData(photo)
     _uiState.update { it.copy(capturedPhoto = capturedPhoto, isShareDialogVisible = true) }
     val imagePath = JournalRepo.saveImage(capturedPhoto)
     JournalRepo.addRecord("📷 写真を撮影しました", imagePath = imagePath)
   }
+
+  private fun decodePhotoData(photo: PhotoData): Bitmap =
+      when (photo) {
+        is PhotoData.Bitmap -> photo.bitmap.safeCopy() ?: photo.bitmap
+        is PhotoData.HEIC -> {
+          val byteArray = ByteArray(photo.data.remaining())
+          photo.data.get(byteArray)
+          val exifInfo = getExifInfo(byteArray)
+          decodeHeic(byteArray, getTransform(exifInfo))
+        }
+      }
 
   // HEIC Decoding with EXIF transformation
   private fun decodeHeic(heicBytes: ByteArray, transform: Matrix): Bitmap {
@@ -409,6 +427,9 @@ class StreamViewModel(
       bitmap
     }
   }
+
+  private fun Bitmap.safeCopy(): Bitmap? =
+      if (isRecycled) null else runCatching { copy(Bitmap.Config.ARGB_8888, false) }.getOrNull()
 
   override fun onCleared() {
     super.onCleared()

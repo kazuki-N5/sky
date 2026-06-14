@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.gemini.GeminiLiveViewModel
 import com.example.myapplication.gemini.GeminiStatus
 import com.example.myapplication.stream.StreamViewModel
+import com.example.myapplication.tutor.TutorPhase
 import kotlinx.coroutines.delay
 
 @Composable
@@ -55,8 +56,14 @@ fun BoxScope.GeminiOverlay(
         if (granted) geminiViewModel.start()
       }
 
-  // Stop Gemini when this screen leaves composition (e.g. streaming stops).
-  DisposableEffect(Unit) { onDispose { geminiViewModel.stop() } }
+  // Tutor analysis uses a high-resolution DAT capture without triggering the manual share flow.
+  DisposableEffect(streamViewModel, geminiViewModel) {
+    geminiViewModel.setAnalysisCaptureProvider { streamViewModel.captureForAnalysis() }
+    onDispose {
+      geminiViewModel.setAnalysisCaptureProvider(null)
+      geminiViewModel.stop()
+    }
+  }
 
   // Forward camera frames to Gemini at ~1 fps while live.
   LaunchedEffect(ui.status) {
@@ -131,6 +138,27 @@ fun BoxScope.GeminiOverlay(
               Modifier.fillMaxWidth()
                   .clip(RoundedCornerShape(8.dp))
                   .background(Color(0xCCB00020))
+                  .padding(8.dp),
+      )
+    }
+
+    if (ui.tutor.phase !in setOf(TutorPhase.IDLE, TutorPhase.WATCHING)) {
+      val tutorText =
+          buildString {
+            append("算数: ")
+            append(ui.tutor.message ?: ui.tutor.phase.name)
+            if (ui.tutor.phase == TutorPhase.HINT_VISIBLE && ui.tutor.hintCount > 0) {
+              append(" (${ui.tutor.currentHintIndex + 1}/${ui.tutor.hintCount})")
+            }
+          }
+      Text(
+          tutorText,
+          color = Color(0xFF7DE3FF),
+          style = MaterialTheme.typography.bodySmall,
+          modifier =
+              Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(8.dp))
+                  .background(Color.Black.copy(alpha = 0.55f))
                   .padding(8.dp),
       )
     }

@@ -29,6 +29,8 @@ class GeminiLiveClient(
     fun onOutputTranscript(text: String)
     fun onTurnComplete()
     fun onInterrupted()
+    fun onToolCall(id: String, name: String, args: JSONObject)
+    fun onToolCallCancelled(ids: List<String>)
     fun onClosed(reason: String)
     fun onError(message: String)
   }
@@ -39,9 +41,22 @@ class GeminiLiveClient(
     const val DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
     private const val WS_BASE =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage."
-    private const val DEFAULT_SYSTEM_INSTRUCTION =
-        "あなたはスマートグラスのカメラ映像越しにユーザーの周囲が見えている、親切で簡潔な音声アシスタントです。" +
-            "ユーザーは日本語で話します。入力も出力も必ず日本語として扱い、常に日本語で短く自然な話し言葉で応答してください。"
+    private val DEFAULT_SYSTEM_INSTRUCTION =
+        """
+        あなたはスマートグラスのカメラ映像越しにユーザーの周囲が見えている、親切で簡潔な音声アシスタントです。
+        ユーザーは日本語で話します。常に日本語で短く自然に応答してください。
+
+        通常時は、映像に算数・数学の問題が見えても自発的に解いたり答えを言ったりしません。
+        ユーザーが「わからない」「ヒントが欲しい」など助けを求めたら、問題を直接解かず
+        request_math_helpを呼び出してください。
+        アプリから「MATH_OFFER_READY」という内部メッセージを受けたら、
+        「難しい？ヒントを出そうか？」と一度だけ尋ねてください。
+        その提案にユーザーが同意したらaccept_math_offer、断ったらdecline_math_offerを呼び出してください。
+        アプリから「MATH_MODE_ACTIVE」を受け取った後だけ家庭教師として振る舞います。
+        「次のヒント」と言われたらnext_math_hint、「答え」と言われたらshow_math_answer、
+        「終了」と言われたらclose_math_tutorを呼び出してください。
+        図や数値を自分で作らず、アプリから「TUTOR_SPEAK:」で渡された文だけを簡潔に説明してください。
+        """.trimIndent()
   }
 
   private val client =
@@ -87,6 +102,30 @@ class GeminiLiveClient(
     webSocket?.send(JSONObject().put("realtimeInput", JSONObject().put("video", blob)).toString())
   }
 
+  fun sendText(text: String) {
+    if (!ready || text.isBlank()) return
+    val turn =
+        JSONObject()
+            .put("role", "user")
+            .put("parts", JSONArray().put(JSONObject().put("text", text)))
+    val content =
+        JSONObject().put("turns", JSONArray().put(turn)).put("turnComplete", true)
+    webSocket?.send(JSONObject().put("clientContent", content).toString())
+  }
+
+  fun sendToolResponse(id: String, name: String, result: JSONObject) {
+    if (!ready) return
+    val functionResponse =
+        JSONObject().put("id", id).put("name", name).put("response", result)
+    webSocket?.send(
+        JSONObject()
+            .put(
+                "toolResponse",
+                JSONObject().put("functionResponses", JSONArray().put(functionResponse)),
+            )
+            .toString())
+  }
+
   private fun sendSetup() {
     val setup =
         JSONObject().apply {
@@ -104,9 +143,37 @@ class GeminiLiveClient(
           )
           put("inputAudioTranscription", JSONObject())
           put("outputAudioTranscription", JSONObject())
+          put(
+              "tools",
+              JSONArray()
+                  .put(
+                      JSONObject()
+                          .put(
+                              "functionDeclarations",
+                              JSONArray()
+                                  .put(tool("request_math_help", "現在見えている図形問題のヒントを要求する"))
+                                  .put(tool("accept_math_offer", "算数ヒントの提案を受け入れる"))
+                                  .put(tool("decline_math_offer", "算数ヒントの提案を断る"))
+                                  .put(tool("next_math_hint", "次の段階のヒントを表示する"))
+                                  .put(tool("show_math_answer", "ユーザーが明示的に求めた最終回答を表示する"))
+                                  .put(tool("close_math_tutor", "算数チューターを終了する")),
+                          )),
+          )
         }
     webSocket?.send(JSONObject().put("setup", setup).toString())
   }
+
+  private fun tool(name: String, description: String): JSONObject =
+      JSONObject()
+          .put("name", name)
+          .put("description", description)
+          .put(
+              "parameters",
+              JSONObject()
+                  .put("type", "OBJECT")
+                  .put("properties", JSONObject())
+                  .put("required", JSONArray()),
+          )
 
   private val socketListener =
       object : WebSocketListener() {
@@ -160,6 +227,23 @@ class GeminiLiveClient(
       ready = true
       listener.onReady()
       return
+    }
+
+    json.optJSONObject("toolCall")?.optJSONArray("functionCalls")?.let { calls ->
+      for (i in 0 until calls.length()) {
+        val call = calls.optJSONObject(i) ?: continue
+        val id = call.optString("id")
+        val name = call.optString("name")
+        if (id.isNotEmpty() && name.isNotEmpty()) {
+          listener.onToolCall(id, name, call.optJSONObject("args") ?: JSONObject())
+        }
+      }
+    }
+    json.optJSONObject("toolCallCancellation")?.optJSONArray("ids")?.let { ids ->
+      listener.onToolCallCancelled(
+          buildList {
+            for (i in 0 until ids.length()) ids.optString(i).takeIf(String::isNotEmpty)?.let(::add)
+          })
     }
 
     val serverContent =
