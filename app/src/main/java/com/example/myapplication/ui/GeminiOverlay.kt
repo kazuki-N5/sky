@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -64,6 +65,18 @@ fun BoxScope.GeminiOverlay(
         delay(1000)
       }
     }
+  }
+
+  // AI avatar: talking video while Gemini speaks, idle video otherwise.
+  if (ui.status == GeminiStatus.LIVE || ui.status == GeminiStatus.CONNECTING) {
+    AvatarVideo(
+        speaking = ui.speaking,
+        modifier =
+            Modifier.align(Alignment.CenterEnd)
+                .padding(16.dp)
+                .size(150.dp)
+                .clip(RoundedCornerShape(16.dp)),
+    )
   }
 
   Column(

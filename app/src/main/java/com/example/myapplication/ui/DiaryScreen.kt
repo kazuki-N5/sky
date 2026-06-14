@@ -31,6 +31,7 @@ fun DiaryScreen(viewModel: JournalViewModel, modifier: Modifier = Modifier) {
   val diaryUi by viewModel.diaryUi.collectAsStateWithLifecycle()
   val today = viewModel.today()
   val todayDiary = data[today]?.diary
+  val positivity = data[today]?.positivity
   val canGenerate = viewModel.canGenerateNow()
 
   Column(
@@ -52,6 +53,10 @@ fun DiaryScreen(viewModel: JournalViewModel, modifier: Modifier = Modifier) {
             modifier = Modifier.padding(16.dp),
             style = MaterialTheme.typography.bodyLarge,
         )
+      }
+      positivity?.let {
+        Spacer(Modifier.height(12.dp))
+        SentimentBar(it, modifier = Modifier.fillMaxWidth())
       }
       Spacer(Modifier.height(16.dp))
     } else {

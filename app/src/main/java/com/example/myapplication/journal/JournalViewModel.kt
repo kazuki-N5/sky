@@ -39,8 +39,9 @@ class JournalViewModel(app: Application) : AndroidViewModel(app) {
     _selectedDate.value = date
   }
 
-  /** The diary button is only enabled from 23:00 onward (per spec). */
-  fun canGenerateNow(): Boolean = LocalDateTime.now().hour >= 23
+  // NOTE: 23:00 gate temporarily disabled for testing — can generate anytime, repeatedly.
+  // To restore: return LocalDateTime.now().hour >= 23
+  fun canGenerateNow(): Boolean = true
 
   fun generateTodayDiary() {
     if (_diaryUi.value.generating) return
@@ -59,7 +60,12 @@ class JournalViewModel(app: Application) : AndroidViewModel(app) {
                 "あたたかく簡潔に（200〜400字程度の文章で、箇条書きにしない）書いてください。\n\n" +
                 "今日の記録:\n$joined"
         val summary = withContext(Dispatchers.IO) { GeminiTextClient.generate(prompt) }
-        JournalRepo.setDiary(summary, date)
+        // Sentiment via Gemini function calling; if it fails, still save the diary (positivity null).
+        val positivity =
+            withContext(Dispatchers.IO) {
+              runCatching { GeminiTextClient.analyzeSentiment(summary) }.getOrNull()
+            }
+        JournalRepo.setDiary(summary, positivity, date)
         _diaryUi.value = DiaryUiState()
       } catch (e: Exception) {
         _diaryUi.value = DiaryUiState(error = e.message ?: "生成に失敗しました")

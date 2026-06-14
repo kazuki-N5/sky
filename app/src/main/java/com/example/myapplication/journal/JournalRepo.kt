@@ -14,7 +14,11 @@ import org.json.JSONObject
 
 data class RecordItem(val time: String, val text: String)
 
-data class DayEntry(val records: List<RecordItem> = emptyList(), val diary: String? = null)
+data class DayEntry(
+    val records: List<RecordItem> = emptyList(),
+    val diary: String? = null,
+    val positivity: Int? = null, // 0-100; negativity = 100 - positivity
+)
 
 object JournalRepo {
   private const val PREFS = "journal_prefs"
@@ -47,10 +51,10 @@ object JournalRepo {
   }
 
   @Synchronized
-  fun setDiary(text: String, date: String = today()) {
+  fun setDiary(text: String, positivity: Int?, date: String = today()) {
     val map = _data.value.toMutableMap()
     val day = map[date] ?: DayEntry()
-    map[date] = day.copy(diary = text)
+    map[date] = day.copy(diary = text, positivity = positivity)
     _data.value = map
     save()
   }
@@ -71,7 +75,9 @@ object JournalRepo {
           recs.add(RecordItem(r.optString("time"), r.optString("text")))
         }
         val diary = if (o.isNull("diary")) null else o.optString("diary").ifEmpty { null }
-        map[date] = DayEntry(recs, diary)
+        val positivity =
+            if (o.has("positivity") && !o.isNull("positivity")) o.getInt("positivity") else null
+        map[date] = DayEntry(recs, diary, positivity)
       }
       _data.value = map
     } catch (_: Exception) {}
@@ -86,6 +92,7 @@ object JournalRepo {
       day.records.forEach { arr.put(JSONObject().put("time", it.time).put("text", it.text)) }
       o.put("records", arr)
       day.diary?.let { o.put("diary", it) }
+      day.positivity?.let { o.put("positivity", it) }
       root.put(date, o)
     }
     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

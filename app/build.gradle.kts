@@ -33,6 +33,11 @@ android {
             "GEMINI_API_KEY",
             "\"${localProps.getProperty("gemini_api_key") ?: ""}\"",
         )
+        buildConfigField(
+            "String",
+            "RELAY_WS_URL",
+            "\"${localProps.getProperty("relay_ws_url") ?: ""}\"",
+        )
     }
 
     buildTypes {
@@ -69,10 +74,13 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.okhttp)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
     // Meta Wearables Device Access Toolkit (DAT)
     implementation(libs.mwdat.core)
     implementation(libs.mwdat.camera)
     implementation(libs.mwdat.mockdevice)
+    implementation(libs.mwdat.display)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

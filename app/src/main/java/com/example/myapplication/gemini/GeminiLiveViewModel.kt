@@ -12,9 +12,12 @@ import com.example.myapplication.BuildConfig
 import com.example.myapplication.journal.JournalRepo
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,6 +33,7 @@ data class GeminiUiState(
     val userText: String = "",
     val assistantText: String = "",
     val error: String? = null,
+    val speaking: Boolean = false,
 )
 
 class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveClient.Listener {
@@ -40,6 +44,8 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
   private var client: GeminiLiveClient? = null
   private val mic = MicRecorder { chunk -> client?.sendAudio(chunk) }
   private val speaker = SpeakerPlayer()
+  private var relay: RelayPublisher? = null
+  private var relayJob: Job? = null
 
   @Volatile private var lastFrameMs = 0L
   @Volatile private var sendingFrame = false
@@ -63,10 +69,23 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
       it.copy(status = GeminiStatus.CONNECTING, error = null, userText = "", assistantText = "")
     }
     speaker.start()
+    // Publish speaking/text to the glasses-avatar relay (mirrors the assistant on the glasses screen).
+    relay = RelayPublisher(BuildConfig.RELAY_WS_URL).also { it.connect() }
+    relayJob =
+        viewModelScope.launch {
+          _uiState
+              .map { it.speaking to it.assistantText }
+              .distinctUntilChanged()
+              .collect { (sp, txt) -> relay?.publish(sp, txt) }
+        }
     client = GeminiLiveClient(apiKey = key, listener = this).also { it.connect() }
   }
 
   fun stop() {
+    relayJob?.cancel()
+    relayJob = null
+    relay?.close()
+    relay = null
     mic.stop()
     speaker.stop()
     client?.close()
@@ -111,7 +130,10 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
     mic.start()
   }
 
-  override fun onAudio(pcm24k: ByteArray) = speaker.enqueue(pcm24k)
+  override fun onAudio(pcm24k: ByteArray) {
+    if (!_uiState.value.speaking) _uiState.update { it.copy(speaking = true) }
+    speaker.enqueue(pcm24k)
+  }
 
   override fun onInputTranscript(text: String) {
     if (turnFresh) {
@@ -128,6 +150,7 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
 
   override fun onTurnComplete() {
     turnFresh = true
+    _uiState.update { it.copy(speaking = false) }
     val state = _uiState.value
     val u = state.userText.trim()
     val a = state.assistantText.trim()
@@ -143,7 +166,10 @@ class GeminiLiveViewModel(app: Application) : AndroidViewModel(app), GeminiLiveC
     }
   }
 
-  override fun onInterrupted() = speaker.flush()
+  override fun onInterrupted() {
+    _uiState.update { it.copy(speaking = false) }
+    speaker.flush()
+  }
 
   override fun onClosed(reason: String) {
     mic.stop()

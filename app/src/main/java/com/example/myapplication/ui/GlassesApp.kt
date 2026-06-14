@@ -7,6 +7,8 @@ package com.example.myapplication.ui
 import android.app.Activity
 import android.app.Application
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +44,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -174,14 +178,56 @@ private fun NonStreamScreen(
         textAlign = TextAlign.Center,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(32.dp))
+    val isUpdateRequired = uiState.isFirmwareUpdateRequired || uiState.isDatAppUpdateRequired
+    if (isUpdateRequired) {
+      Spacer(Modifier.height(16.dp))
+      Text(
+          text =
+              when {
+                uiState.isFirmwareUpdateRequired && uiState.isDatAppUpdateRequired ->
+                    "メガネのファームウェアとアプリの更新が必要です。"
+                uiState.isFirmwareUpdateRequired -> "メガネのファームウェア更新が必要です。"
+                else -> "メガネ側アプリの更新が必要です。"
+              },
+          color = Color(0xFF8A4B00),
+          style = MaterialTheme.typography.bodyMedium,
+          textAlign = TextAlign.Center,
+          modifier =
+              Modifier.fillMaxWidth()
+                  .clip(RoundedCornerShape(12.dp))
+                  .background(Color(0xFFFFF4D6))
+                  .padding(12.dp),
+      )
+      if (uiState.isFirmwareUpdateRequired) {
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { (context as? Activity)?.let { viewModel.openFirmwareUpdate(it) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("ファームウェアを更新")
+        }
+      }
+      if (uiState.isDatAppUpdateRequired) {
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { (context as? Activity)?.let { viewModel.openDATGlassesAppUpdate(it) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+          Text("メガネのアプリを更新")
+        }
+      }
+    }
+
+    Spacer(Modifier.height(if (isUpdateRequired) 16.dp else 32.dp))
     Button(
         onClick = { viewModel.navigateToStreaming(onRequestWearablesPermission) },
-        enabled = uiState.hasActiveDevice,
+        enabled = uiState.hasActiveDevice && !isUpdateRequired,
         modifier = Modifier.fillMaxWidth().height(52.dp),
     ) {
       Text("Start streaming")
     }
+    Spacer(Modifier.height(8.dp))
+    DisplayPanel()
     Spacer(Modifier.height(8.dp))
     TextButton(onClick = { (context as? Activity)?.let { viewModel.startUnregistration(it) } }) {
       Text("Disconnect")

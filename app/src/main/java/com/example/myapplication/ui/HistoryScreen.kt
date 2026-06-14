@@ -99,6 +99,10 @@ fun HistoryScreen(viewModel: JournalViewModel, modifier: Modifier = Modifier) {
           onClick = { expanded = if (expanded == "diary") "" else "diary" },
       ) {
         Text(entry.diary ?: "まだ日記がありません（「日記」タブで生成できます）")
+        entry.positivity?.let {
+          Spacer(Modifier.height(12.dp))
+          SentimentBar(it, modifier = Modifier.fillMaxWidth())
+        }
       }
     }
   }
