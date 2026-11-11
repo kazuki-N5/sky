@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sky · Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+JP:wght@400;500;600&family=Noto+Serif+JP:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', 'Noto Sans JP', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', 'Noto Serif JP', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · sky</p>
+    <h1>会話から日記までのデータの流れ</h1>
+
+    <div class="diagram-container">
+    <svg viewBox="0 72 960 528" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
+      <title id="architecture-title">sky のアーキテクチャ</title>
+      <desc id="architecture-desc">スマートグラスの映像とマイク音声を Gemini Live API に送って会話し、会話と写真を端末に記録して、Gemini API で日記にまとめる流れ。</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+      </defs>
+
+      <rect x="0" y="72" width="960" height="528" fill="#f5f5f5"/>
+
+      <!-- Zones (bg → zones → arrows → nodes) -->
+      <rect x="184" y="112" width="536" height="420" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="196" y="116" width="68" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="230" y="125" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">ANDROID APP</text>
+
+      <rect x="736" y="112" width="184" height="420" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <rect x="748" y="116" width="80" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="788" y="125" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">GOOGLE GEMINI</text>
+
+      <!-- Arrows (before nodes) -->
+      <!-- Glasses → Stream -->
+      <line x1="144" y1="176" x2="216" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Stream → Live VM -->
+      <line x1="352" y1="176" x2="424" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Live VM → Gemini Live API -->
+      <line x1="592" y1="164" x2="752" y2="164" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <!-- Gemini Live API → Live VM (reply) -->
+      <line x1="752" y1="188" x2="592" y2="188" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <!-- Stream → Repo (photo) -->
+      <line x1="312" y1="208" x2="312" y2="304" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Live VM → Repo (conversation log) -->
+      <line x1="440" y1="208" x2="440" y2="304" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Live VM → UI (captions) -->
+      <line x1="560" y1="208" x2="560" y2="304" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Repo → UI -->
+      <line x1="456" y1="336" x2="536" y2="336" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Repo → Diary VM -->
+      <line x1="360" y1="368" x2="360" y2="448" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Diary VM → Gemini API -->
+      <line x1="440" y1="468" x2="752" y2="468" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <!-- Gemini API → Diary VM (reply) -->
+      <line x1="752" y1="492" x2="440" y2="492" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+      <!-- Arrow labels (Japanese register: 12px sans 500, 16px masks; Latin: 8px mono) -->
+      <rect x="164" y="152" width="32" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="180" y="164" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">映像</text>
+
+      <rect x="372" y="156" width="32" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="388" y="165" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 FPS</text>
+
+      <rect x="638" y="140" width="68" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="672" y="152" fill="#2e5aa8" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">音声＋映像</text>
+
+      <rect x="656" y="196" width="32" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="672" y="208" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">返答</text>
+
+      <rect x="272" y="248" width="32" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="288" y="260" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">写真</text>
+
+      <rect x="448" y="248" width="56" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="476" y="260" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">会話ログ</text>
+
+      <rect x="568" y="248" width="32" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="584" y="260" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">字幕</text>
+
+      <rect x="480" y="312" width="32" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="496" y="324" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">一覧</text>
+
+      <rect x="368" y="400" width="68" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="402" y="412" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">今日の記録</text>
+
+      <rect x="562" y="444" width="68" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="596" y="456" fill="#2e5aa8" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">要約を依頼</text>
+
+      <rect x="544" y="500" width="104" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="596" y="512" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">日記・感情スコア</text>
+
+      <!-- Node: Smart glasses (input) -->
+      <rect x="40" y="144" width="104" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="40" y="144" width="104" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+      <rect x="48" y="152" width="40" height="12" rx="2" fill="transparent" stroke="rgba(90,101,128,0.40)" stroke-width="0.8"/>
+      <text x="68" y="161" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DEVICE</text>
+      <text x="92" y="180" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">スマートグラス</text>
+      <text x="92" y="196" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Meta · DAT SDK</text>
+
+      <!-- Node: Stream (backend) -->
+      <rect x="216" y="144" width="136" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="216" y="144" width="136" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <rect x="224" y="152" width="40" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+      <text x="244" y="161" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STREAM</text>
+      <text x="284" y="180" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">映像・撮影</text>
+      <text x="284" y="196" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">StreamViewModel</text>
+
+      <!-- Node: Gemini Live VM (focal) -->
+      <rect x="424" y="144" width="168" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="424" y="144" width="168" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+      <rect x="432" y="152" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+      <text x="446" y="161" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LIVE</text>
+      <text x="508" y="180" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">AI との会話</text>
+      <text x="508" y="196" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GeminiLiveViewModel</text>
+
+      <!-- Node: Gemini Live API (external) -->
+      <rect x="752" y="144" width="152" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="752" y="144" width="152" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <rect x="760" y="152" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+      <text x="774" y="161" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">API</text>
+      <text x="828" y="180" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gemini Live API</text>
+      <text x="828" y="196" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">WebSocket</text>
+
+      <!-- Node: Journal repo (store) -->
+      <rect x="264" y="304" width="192" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="264" y="304" width="192" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <rect x="272" y="312" width="36" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.50)" stroke-width="0.8"/>
+      <text x="290" y="321" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STORE</text>
+      <text x="360" y="340" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">記録・日記の保存</text>
+      <text x="360" y="356" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">JournalRepo · JSON</text>
+
+      <!-- Node: UI (backend) -->
+      <rect x="536" y="304" width="168" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="536" y="304" width="168" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <rect x="544" y="312" width="20" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+      <text x="554" y="321" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+      <text x="620" y="340" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">画面表示</text>
+      <text x="620" y="356" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Jetpack Compose</text>
+
+      <!-- Node: Diary VM (backend) -->
+      <rect x="280" y="448" width="160" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="280" y="448" width="160" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <rect x="288" y="456" width="36" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+      <text x="306" y="465" fill="#2d3142" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DIARY</text>
+      <text x="360" y="484" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif" text-anchor="middle">日記の生成</text>
+      <text x="360" y="500" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">JournalViewModel</text>
+
+      <!-- Node: Gemini API (external) -->
+      <rect x="752" y="448" width="152" height="64" rx="6" fill="#f5f5f5"/>
+      <rect x="752" y="448" width="152" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <rect x="760" y="456" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+      <text x="774" y="465" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">API</text>
+      <text x="828" y="484" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gemini API</text>
+      <text x="828" y="500" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">REST</text>
+
+      <!-- Legend strip -->
+      <line x1="40" y1="548" x2="920" y2="548" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+      <text x="40" y="564" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+      <rect x="40" y="572" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+      <text x="60" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">中心の処理</text>
+
+      <rect x="136" y="572" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="156" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">アプリ内の処理</text>
+
+      <rect x="256" y="572" width="14" height="10" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <text x="276" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">保存</text>
+
+      <rect x="320" y="572" width="14" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="340" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">外部 API</text>
+
+      <rect x="412" y="572" width="14" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+      <text x="432" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">入力デバイス</text>
+
+      <line x1="524" y1="577" x2="552" y2="577" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <text x="560" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">API 呼び出し</text>
+
+      <line x1="652" y1="577" x2="680" y2="577" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <text x="688" y="582" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist', 'Noto Sans JP', 'Yu Gothic', sans-serif">応答</text>
+    </svg>
+    </div>
+  </div>
+</body>
+</html>

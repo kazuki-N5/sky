@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# ローカル用README雛形（書き方ガイド, コミットしない）
+/README_雛形.md
+
+# ローカル用ガクチカ資料（コミットしない）
+/02_ガクチカ_ハッカソン.md
